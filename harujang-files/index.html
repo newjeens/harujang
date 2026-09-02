@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>하루장</title>
+<meta name="description" content="메모와 달력이 한 화면에 — PC와 갤럭시에서 같은 데이터">
+<meta name="theme-color" content="#2456A6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="하루장">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="64x64" href="./favicon-64.png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Gowun+Batang:wght@400;700&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --paper: #FAFAF6;
+    --surface: #FFFFFF;
+    --ink: #1B1F27;
+    --ink-2: #5A6070;
+    --ink-3: #8C92A0;
+    --line: #E3E3DB;
+    --line-2: #EFEFE8;
+    --accent: #2456A6;
+    --accent-ink: #1A4482;
+    --accent-tint: #E8EEF9;
+    --sun: #C23B3B;
+    --sat: #2F6FD1;
+    --today: #FFF4DB;
+    --today-ring: #E7A93A;
+    --ok: #2E8B57;
+    --warn: #D97B14;
+    --danger: #C23B3B;
+    --radius: 10px;
+    --shadow: 0 10px 30px rgba(27,31,39,.12), 0 2px 6px rgba(27,31,39,.06);
+    --font: "IBM Plex Sans KR", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    --serif: "Gowun Batang", "Noto Serif KR", "Nanum Myeongjo", serif;
+    --header-h: 56px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; background: none; border: 0; padding: 0; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- Header ---------- */
+  .top {
+    height: var(--header-h);
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; }
+  .brand-name { font-family: var(--serif); font-weight: 700; font-size: 22px; letter-spacing: -.01em; }
+  .brand-sub { font-size: 12px; color: var(--ink-3); letter-spacing: .04em; }
+  .tabs { display: none; margin-left: auto; }
+  .sync { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+  .sync .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); }
+  .sync[data-state="online"] .dot { background: var(--ok); }
+  .sync[data-state="saving"] .dot { background: var(--warn); }
+  .sync[data-state="offline"] .dot { background: var(--ink-3); }
+  .sync[data-state="error"] .dot { background: var(--danger); }
+  .icon-btn {
+    height: 36px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface);
+    font-size: 14px; font-weight: 500; color: var(--ink-2);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .icon-btn:hover { border-color: var(--ink-3); color: var(--ink); }
+  .btn { height: 38px; padding: 0 14px; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-ink); }
+  .btn-ghost { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); }
+  .btn-ghost:hover { color: var(--ink); border-color: var(--ink-3); }
+  .btn-danger { color: var(--danger); border: 1px solid transparent; }
+  .btn-danger:hover { border-color: var(--danger); }
+  .btn-danger.confirm { background: var(--danger); color: #fff; }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    height: calc(100dvh - var(--header-h));
+  }
+  .cal-pane { display: flex; flex-direction: column; min-width: 0; padding: 14px 18px 18px; }
+  .side-pane {
+    border-left: 1px solid var(--line);
+    background: var(--surface);
+    overflow-y: auto; min-width: 0;
+    display: flex; flex-direction: column;
+  }
+
+  /* ---------- Calendar ---------- */
+  .cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .month-title { font-family: var(--serif); font-size: 26px; font-weight: 700; margin: 0 6px; letter-spacing: -.01em; }
+  .nav-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); font-size: 18px; color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; }
+  .nav-btn:hover { color: var(--ink); border-color: var(--ink-3); }
+  .cal-head .spacer { flex: 1; }
+  .cal {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-rows: auto; grid-auto-rows: minmax(0, 1fr);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--surface); overflow: hidden;
+  }
+  .cal .wd {
+    font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--ink-2);
+    text-align: center; padding: 8px 0; border-bottom: 1px solid var(--line);
+    background: var(--paper);
+  }
+  .cal .wd.sun { color: var(--sun); } .cal .wd.sat { color: var(--sat); }
+  .cell {
+    position: relative; min-height: 0; padding: 6px 6px 4px;
+    border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
+    display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+    background: var(--surface); text-align: left; overflow: hidden;
+  }
+  .cell:nth-child(7n) { border-right: 0; }
+  .cell:hover { background: #FBFBF8; }
+  .cell.out { background: #F6F6F1; }
+  .cell.out .d { color: var(--ink-3); }
+  .cell.today { background: var(--today); }
+  .cell.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+  .cell .d-row { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+  .cell .d {
+    font-size: 15px; font-weight: 600; width: 26px; height: 22px; line-height: 22px; text-align: center; border-radius: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cell.sun .d, .cell.hol .d { color: var(--sun); }
+  .cell.sat .d { color: var(--sat); }
+  .cell.today .d { background: var(--today-ring); color: #fff; }
+  .cell .hol-name { font-size: 11px; color: var(--sun); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .chips { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: hidden; }
+  .chip {
+    --c: var(--ink-2);
+    font-size: 12.5px; line-height: 1.35; padding: 2px 6px; border-radius: 4px;
+    background: color-mix(in srgb, var(--c) 13%, white);
+    color: color-mix(in srgb, var(--c) 82%, black);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-left: 3px solid var(--c);
+  }
+  .chip b { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 3px; }
+  .chip.done { text-decoration: line-through; opacity: .55; }
+  .more { font-size: 11.5px; color: var(--ink-3); padding-left: 4px; }
+  .dots { display: none; gap: 3px; flex-wrap: wrap; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); display: block; }
+
+  /* ---------- Agenda ---------- */
+  .agenda { padding: 16px 18px 14px; border-bottom: 1px solid var(--line); }
+  .sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .sec-title { font-family: var(--serif); font-size: 19px; font-weight: 700; margin: 0; }
+  .sec-title .wk { font-family: var(--font); font-weight: 500; font-size: 14px; color: var(--ink-2); margin-left: 6px; }
+  .badge { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; background: var(--today); color: #9A6A12; border: 1px solid var(--today-ring); }
+  .badge.hol { background: #FBE9E9; color: var(--sun); border-color: #EFB4B4; }
+  .sec-head .grow { flex: 1; }
+  .link-btn { font-size: 13.5px; font-weight: 600; color: var(--accent); }
+  .link-btn:hover { text-decoration: underline; }
+  .ev-list { display: flex; flex-direction: column; }
+  .ev {
+    display: grid; grid-template-columns: 26px 58px 1fr; align-items: center; gap: 8px;
+    padding: 8px 4px; border-top: 1px solid var(--line-2); cursor: pointer; border-radius: 6px;
+  }
+  .ev:first-child { border-top: 0; }
+  .ev:hover { background: var(--paper); }
+  .ev .chk {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface);
+    display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 13px;
+  }
+  .ev .chk:hover { border-color: var(--ok); }
+  .ev.done .chk { background: var(--ok); border-color: var(--ok); }
+  .ev .t { font-size: 13.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .ev .t.allday { color: var(--ink-3); }
+  .ev .title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ev .title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev.done .title span { text-decoration: line-through; color: var(--ink-3); }
+  .tag-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
+  .ev .rep { font-size: 11px; color: var(--ink-3); flex: none; }
+  .empty { color: var(--ink-3); font-size: 14px; padding: 10px 4px; }
+
+  /* ---------- Notes ---------- */
+  .notes { padding: 16px 18px 24px; flex: 1; }
+  .search { display: flex; gap: 8px; margin-bottom: 10px; }
+  .search input {
+    flex: 1; height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; background: var(--paper);
+  }
+  .search input::placeholder { color: var(--ink-3); }
+  .tag-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tf {
+    --c: var(--ink-2);
+    font-size: 12.5px; font-weight: 500; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--ink-2); background: var(--surface);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .tf i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .tf.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 12%, white); color: color-mix(in srgb, var(--c) 85%, black); }
+  .note-list { display: flex; flex-direction: column; gap: 8px; }
+  .note {
+    text-align: left; width: 100%;
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--surface);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .note:hover { border-color: var(--ink-3); }
+  .note .n-title { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+  .note .n-title .pin { color: var(--warn); font-size: 13px; }
+  .note .n-body { font-size: 13.5px; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
+  .note .n-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .note .n-meta .grow { flex: 1; }
+  .note .n-meta .tg { --c: var(--ink-2); padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--c) 12%, white); color: color-mix(in srgb, var(--c) 85%, black); font-weight: 500; }
+
+  /* ---------- Modal ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(27,31,39,.38); z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .overlay[hidden] { display: none !important; }
+  .sheet {
+    width: 100%; max-width: 560px; max-height: calc(100dvh - 40px); overflow-y: auto;
+    background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); padding: 20px 22px 18px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .sheet.wide { max-width: 720px; }
+  .sheet h2 { font-family: var(--serif); font-size: 20px; margin: 0; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); letter-spacing: .03em; }
+  .field input[type="text"], .field input[type="date"], .field input[type="time"], .field select, .field textarea {
+    height: 42px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; background: var(--paper); width: 100%;
+  }
+  .field textarea { height: auto; min-height: 120px; padding: 10px 12px; resize: vertical; line-height: 1.6; }
+  .field input.big { font-size: 18px; font-weight: 600; height: 46px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .tag-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tp {
+    --c: var(--ink-2);
+    font-size: 13px; font-weight: 500; padding: 5px 11px; border-radius: 999px;
+    border: 1.5px solid var(--line); color: var(--ink-2); background: var(--surface);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .tp i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  .tp.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, white); color: color-mix(in srgb, var(--c) 85%, black); }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .actions .grow { flex: 1; }
+  .hint { font-size: 12.5px; color: var(--ink-3); }
+  .note-body { min-height: 260px !important; font-size: 15px; }
+  .save-state { font-size: 12.5px; color: var(--ink-3); }
+
+  /* tag manager */
+  .tag-rows { display: flex; flex-direction: column; gap: 8px; }
+  .tag-row { display: grid; grid-template-columns: 44px 1fr 40px; gap: 8px; align-items: center; }
+  .tag-row input[type="color"] { width: 44px; height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--surface); cursor: pointer; }
+  .tag-row input[type="text"] { height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; background: var(--paper); }
+  .tag-row .x { width: 40px; height: 38px; border-radius: 8px; color: var(--ink-3); font-size: 18px; }
+  .tag-row .x:hover { color: var(--danger); background: #FBE9E9; }
+
+  .banner {
+    display: none; padding: 8px 18px; font-size: 13.5px; background: #FFF4DB; color: #7A5410; border-bottom: 1px solid #F1DDAA;
+  }
+  .banner.show { display: block; }
+
+  .fab {
+    display: none; position: fixed; right: 18px; bottom: 22px; z-index: 30;
+    width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 30px; line-height: 1; box-shadow: var(--shadow); align-items: center; justify-content: center;
+  }
+
+  /* ---------- Mobile ---------- */
+  @media (max-width: 860px) {
+    :root { --header-h: 52px; }
+    body { font-size: 15px; }
+    .top { padding: 0 12px; gap: 10px; }
+    .brand-sub, .sync span:last-child { display: none; }
+    .tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-left: auto; }
+    .tabs button { padding: 0 16px; height: 34px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+    .tabs button.on { background: var(--accent); color: #fff; }
+    .sync { margin-left: 0; }
+    #btnTags { padding: 0 9px; font-size: 13px; }
+    .layout { display: block; height: auto; }
+    .cal-pane { padding: 10px 10px 8px; }
+    .side-pane { border-left: 0; overflow: visible; }
+    .month-title { font-size: 21px; }
+    .cal { min-height: 0; }
+    .cal .wd { padding: 6px 0; font-size: 11.5px; }
+    .cell { min-height: 62px; padding: 4px 3px 4px; gap: 2px; }
+    .cell .d { font-size: 14px; width: 24px; height: 22px; }
+    .cell .hol-name { font-size: 10px; }
+    .chips, .more { display: none; }
+    .dots { display: flex; padding-left: 4px; }
+    body[data-tab="memo"] .cal-pane, body[data-tab="memo"] .agenda { display: none; }
+    body[data-tab="cal"] .notes { display: none; }
+    .notes { padding-bottom: 96px; }
+    .agenda { padding-bottom: 90px; }
+    .fab { display: inline-flex; }
+    .overlay { align-items: flex-end; padding: 0; }
+    .sheet { max-width: none; border-radius: 16px 16px 0 0; max-height: 92dvh; padding: 18px 16px 24px; }
+    .row3 { grid-template-columns: 1fr 1fr; }
+  }
+  /* ---------- Login ---------- */
+  .gate {
+    position: fixed; inset: 0; z-index: 100; background: var(--paper);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .gate[hidden] { display: none !important; }
+  .gate-card { width: 100%; max-width: 380px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .gate-card img { width: 96px; height: 96px; border-radius: 22px; box-shadow: var(--shadow); }
+  .gate-card h1 { font-family: var(--serif); font-size: 34px; margin: 6px 0 0; letter-spacing: -.01em; }
+  .gate-card p { margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.6; }
+  .gbtn {
+    margin-top: 10px; height: 50px; padding: 0 22px; border-radius: 10px; width: 100%;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: 0 2px 6px rgba(27,31,39,.08);
+    font-size: 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .gbtn:hover { border-color: var(--ink-3); }
+  .gbtn svg { width: 22px; height: 22px; }
+  .gate .err { color: var(--danger); font-size: 13.5px; min-height: 1.4em; }
+  .gate .foot { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
+  .spinner { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .user-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); }
+  .user-chip img { width: 26px; height: 26px; border-radius: 50%; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet { animation: rise .18s ease-out; }
+    @keyframes rise { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <img src="./icon-192.png" alt="">
+    <h1>하루장</h1>
+    <p id="gateMsg">메모와 달력이 한 화면에.<br>구글 계정으로 들어오면 PC와 휴대폰이 같은 내용을 보여줘.</p>
+    <div class="spinner" id="gateSpin"></div>
+    <button type="button" class="gbtn" id="btnGoogle" hidden>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.5 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6C44.1 38.2 46.5 31.9 46.5 24.5z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.4 0 20.1 0 24s1 7.6 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.3 0 11.7-2.1 15.6-5.7l-7.7-6c-2.1 1.4-4.8 2.3-7.9 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+      구글 계정으로 시작
+    </button>
+    <div class="err" id="gateErr"></div>
+    <div class="foot">한 번 로그인하면 다음부터는 바로 열려.</div>
+  </div>
+</div>
+
+<header class="top">
+  <div class="brand"><span class="brand-name">하루장</span><span class="brand-sub">메모 · 달력</span></div>
+  <nav class="tabs" aria-label="화면 선택">
+    <button type="button" id="tabCal" class="on">달력</button>
+    <button type="button" id="tabMemo">메모</button>
+  </nav>
+  <div class="sync" id="sync" data-state="loading"><span class="dot"></span><span id="syncText">불러오는 중</span></div>
+  <button type="button" class="icon-btn" id="btnTags">태그 관리</button>
+</header>
+<div class="banner" id="banner"></div>
+
+<main class="layout">
+  <section class="cal-pane" aria-label="달력">
+    <div class="cal-head">
+      <button type="button" class="nav-btn" id="prevM" aria-label="이전 달">‹</button>
+      <h1 class="month-title num" id="monthTitle">2026년 9월</h1>
+      <button type="button" class="nav-btn" id="nextM" aria-label="다음 달">›</button>
+      <button type="button" class="icon-btn" id="btnToday">오늘</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-primary" id="btnNewEvent">+ 일정</button>
+    </div>
+    <div class="cal" id="cal" role="grid"></div>
+  </section>
+
+  <aside class="side-pane">
+    <section class="agenda" id="agenda" aria-label="선택한 날의 일정"></section>
+    <section class="notes" aria-label="메모">
+      <div class="sec-head">
+        <h2 class="sec-title">메모 <span class="wk" id="noteCount"></span></h2>
+        <span class="grow"></span>
+        <button type="button" class="link-btn" id="btnNewNote">+ 새 메모</button>
+      </div>
+      <div class="search"><input type="search" id="noteSearch" placeholder="제목·내용 검색" autocomplete="off"></div>
+      <div class="tag-filter" id="tagFilter"></div>
+      <div class="note-list" id="noteList"></div>
+    </section>
+  </aside>
+</main>
+
+<button type="button" class="fab" id="fab" aria-label="새로 만들기">+</button>
+
+<!-- Event editor -->
+<div class="overlay" id="evOverlay" hidden>
+  <form class="sheet" id="evForm" autocomplete="off">
+    <h2 id="evHeading">새 일정</h2>
+    <div class="field"><input type="text" id="evTitle" class="big" placeholder="일정 제목" required maxlength="120"></div>
+    <div class="row3">
+      <div class="field"><label for="evDate">날짜</label><input type="date" id="evDate" required></div>
+      <div class="field"><label for="evStart">시작</label><input type="time" id="evStart"></div>
+      <div class="field"><label for="evEnd">끝</label><input type="time" id="evEnd"></div>
+    </div>
+    <div class="field"><label>태그</label><div class="tag-pick" id="evTags"></div></div>
+    <div class="row">
+      <div class="field"><label for="evRepeat">반복</label>
+        <select id="evRepeat">
+          <option value="">반복 안 함</option>
+          <option value="daily">매일</option>
+          <option value="weekly">매주</option>
+          <option value="monthly">매월</option>
+          <option value="yearly">매년</option>
+        </select>
+      </div>
+      <div class="field" id="evUntilWrap"><label for="evUntil">반복 종료일 (비우면 계속)</label><input type="date" id="evUntil"></div>
+    </div>
+    <div class="field"><label for="evMemo">메모</label><textarea id="evMemo" placeholder="장소, 준비물, 참고사항"></textarea></div>
+    <div class="actions">
+      <button type="button" class="btn btn-danger" id="evDelOne" hidden>이 날만 삭제</button>
+      <button type="button" class="btn btn-danger" id="evDel" hidden>삭제</button>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-ghost" id="evCancel">닫기</button>
+      <button type="submit" class="btn btn-primary" id="evSave">저장</button>
+    </div>
+  </form>
+</div>
+
+<!-- Note editor -->
+<div class="overlay" id="ntOverlay" hidden>
+  <div class="sheet wide" id="ntSheet">
+    <div class="field"><input type="text" id="ntTitle" class="big" placeholder="메모 제목" maxlength="200"></div>
+    <div class="field"><textarea id="ntBody" class="note-body" placeholder="내용을 적어줘. 적는 대로 저장돼."></textarea></div>
+    <div class="field"><label>태그</label><div class="tag-pick" id="ntTags"></div></div>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="ntPin"> 위에 고정</label>
+      <span class="save-state" id="ntState"></span>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-danger" id="ntDel">삭제</button>
+      <button type="button" class="btn btn-primary" id="ntClose">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tag manager -->
+<div class="overlay" id="tgOverlay" hidden>
+  <div class="sheet" id="tgSheet">
+    <h2>태그 관리</h2>
+    <p class="hint" style="margin:0">색을 누르면 바꿀 수 있어. 태그를 지워도 일정·메모는 남아.</p>
+    <div class="tag-rows" id="tagRows"></div>
+    <button type="button" class="link-btn" id="tgAdd" style="text-align:left">+ 태그 추가</button>
+    <div class="actions" style="border-top:1px solid var(--line-2);padding-top:12px">
+      <span class="user-chip" id="userChip"></span>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-danger" id="btnLogout">로그아웃</button>
+    </div>
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="btn btn-ghost" id="tgCancel">취소</button>
+      <button type="button" class="btn btn-primary" id="tgSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'harujang.v1';
+  const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+  const DEFAULT_TAGS = [
+    { id: 'work', name: '업무', color: '#2456A6' },
+    { id: 'personal', name: '개인', color: '#2E8B57' },
+    { id: 'invest', name: '투자', color: '#D97B14' },
+    { id: 'family', name: '가족', color: '#C2447A' },
+    { id: 'important', name: '중요', color: '#C23B3B' },
+  ];
+  const HOLIDAYS = {
+    '2026-01-01': '신정', '2026-02-16': '설날 연휴', '2026-02-17': '설날', '2026-02-18': '설날 연휴',
+    '2026-03-01': '삼일절', '2026-03-02': '대체공휴일', '2026-05-05': '어린이날', '2026-05-24': '부처님오신날',
+    '2026-05-25': '대체공휴일', '2026-06-03': '지방선거', '2026-06-06': '현충일', '2026-08-15': '광복절',
+    '2026-08-17': '대체공휴일', '2026-09-24': '추석 연휴', '2026-09-25': '추석', '2026-09-26': '추석 연휴',
+    '2026-10-03': '개천절', '2026-10-05': '대체공휴일', '2026-10-09': '한글날', '2026-12-25': '성탄절',
+    '2027-01-01': '신정', '2027-02-05': '설날 연휴', '2027-02-06': '설날', '2027-02-07': '설날 연휴',
+    '2027-02-08': '대체공휴일', '2027-03-01': '삼일절', '2027-05-05': '어린이날', '2027-05-13': '부처님오신날',
+    '2027-06-06': '현충일', '2027-08-15': '광복절', '2027-08-16': '대체공휴일', '2027-09-14': '추석 연휴',
+    '2027-09-15': '추석', '2027-09-16': '추석 연휴', '2027-10-03': '개천절', '2027-10-04': '대체공휴일',
+    '2027-10-09': '한글날', '2027-10-11': '대체공휴일', '2027-12-25': '성탄절', '2027-12-27': '대체공휴일',
+  };
+
+  // ---------- date helpers ----------
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const todayYmd = () => ymd(new Date());
+  const dayDiff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+  const koDate = (s) => { const d = parse(s); return `${d.getMonth() + 1}월 ${d.getDate()}일`; };
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  // ---------- state ----------
+  let S = { tags: DEFAULT_TAGS.slice(), events: {}, notes: {} };
+  const now = new Date();
+  const view = { y: now.getFullYear(), m: now.getMonth(), sel: todayYmd(), noteQuery: '', noteTag: null };
+
+  // ---------- sync (Firebase) ----------
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAd-lzAL2fGTI1Ii_knKrGbN0osPrOlhwg",
+    authDomain: "geunyeong-iljeong.firebaseapp.com",
+    projectId: "geunyeong-iljeong",
+    storageBucket: "geunyeong-iljeong.firebasestorage.app",
+    messagingSenderId: "2632376796",
+    appId: "1:2632376796:web:f0e81ec81673e601e3af19"
+  };
+  const syncEl = $('sync'), syncText = $('syncText'), banner = $('banner');
+  function setSync(state, text) {
+    syncEl.dataset.state = state;
+    syncText.textContent = text || ({ loading: '불러오는 중', online: '동기화됨', saving: '저장 중', offline: '오프라인 · 나중에 동기화', error: '동기화 오류' })[state];
+  }
+  function showBanner(msg) { banner.textContent = msg; banner.classList.add('show'); }
+  function hideBanner() { banner.classList.remove('show'); }
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
+  let fs = null, uid = null, unsubs = [];
+  let dbReady = { events: false, notes: false, tags: false };
+  let userKey = KEY;   // per-user local cache key
+
+  function userDoc(path) { return fs.doc('users/' + uid + '/' + path); }
+  function userCol(name) { return fs.collection('users/' + uid + '/' + name); }
+
+  let saveTimer = null;
+  async function remoteWrite(path, data) {
+    if (!fs || !uid) return;
+    setSync('saving');
+    clearTimeout(saveTimer);
+    try {
+      // Firestore keeps writes locally while offline and sends them later.
+      const p = data === null ? userDoc(path).delete() : userDoc(path).set(data);
+      const raced = await Promise.race([p.then(() => 'ok'), new Promise(r => setTimeout(() => r('slow'), 4000))]);
+      if (raced === 'ok') saveTimer = setTimeout(() => setSync(navigator.onLine ? 'online' : 'offline'), 300);
+      else setSync('offline');
+      p.catch(() => setSync('error'));
+    } catch (e) { setSync('error'); }
+  }
+
+  function loadUserLocal() {
+    S = { tags: DEFAULT_TAGS.slice(), events: {}, notes: {} };
+    try {
+      const raw = localStorage.getItem(userKey);
+      if (raw) { const o = JSON.parse(raw); if (o && typeof o === 'object') { S.tags = Array.isArray(o.tags) && o.tags.length ? o.tags : S.tags; S.events = o.events || {}; S.notes = o.notes || {}; } }
+    } catch (e) {}
+  }
+  function saveLocal() { try { localStorage.setItem(userKey, JSON.stringify(S)); } catch (e) {} }
+
+  function subscribe() {
+    unsubs.forEach(u => u()); unsubs = [];
+    dbReady = { events: false, notes: false, tags: false };
+    const onErr = (e) => { console.error(e); setSync('error', '동기화 오류'); if (e && e.code === 'permission-denied') showBanner('저장 권한이 없어. 다시 로그인해봐.'); };
+    const stateFrom = (snap) => { if (snap.metadata.fromCache) { if (!navigator.onLine) setSync('offline'); } else setSync('online'); };
+    unsubs.push(userCol('events').onSnapshot({ includeMetadataChanges: true }, (snap) => {
+      const m = {}; snap.forEach(d => { m[d.id] = d.data(); });
+      S.events = m; dbReady.events = true; saveLocal(); renderAll(); stateFrom(snap);
+    }, onErr));
+    unsubs.push(userCol('notes').onSnapshot({ includeMetadataChanges: true }, (snap) => {
+      const m = {}; snap.forEach(d => { m[d.id] = d.data(); });
+      S.notes = m; dbReady.notes = true; saveLocal(); renderNotes(); stateFrom(snap);
+    }, onErr));
+    unsubs.push(userDoc('settings/tags').onSnapshot({ includeMetadataChanges: true }, (snap) => {
+      if (snap.exists) { const list = snap.data().list; if (Array.isArray(list) && list.length) S.tags = list; }
+      else if (!dbReady.tags && !snap.metadata.fromCache) { remoteWrite('settings/tags', { list: S.tags }); }
+      dbReady.tags = true; saveLocal(); renderAll();
+    }, onErr));
+  }
+
+  const gate = $('gate'), gateErr = $('gateErr'), gateSpin = $('gateSpin'), btnGoogle = $('btnGoogle');
+  function showGate(msg) { gate.hidden = false; gateSpin.hidden = true; btnGoogle.hidden = false; if (msg) gateErr.textContent = msg; }
+  async function signIn() {
+    gateErr.textContent = ''; btnGoogle.disabled = true;
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try { await firebase.auth().signInWithPopup(provider); }
+    catch (e) {
+      if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment' || e.code === 'auth/cancelled-popup-request')) {
+        try { await firebase.auth().signInWithRedirect(provider); return; } catch (e2) { gateErr.textContent = '로그인 창을 열지 못했어. 다시 눌러봐.'; }
+      } else if (e && e.code === 'auth/popup-closed-by-user') { gateErr.textContent = '로그인 창이 닫혔어. 다시 눌러봐.'; }
+      else if (e && e.code === 'auth/unauthorized-domain') { gateErr.textContent = '이 주소는 아직 허용 목록에 없어. (unauthorized-domain)'; }
+      else { gateErr.textContent = '로그인에 실패했어: ' + (e && e.code ? e.code : e); }
+    }
+    btnGoogle.disabled = false;
+  }
+  btnGoogle.addEventListener('click', signIn);
+  $('btnLogout').addEventListener('click', () => twoStep($('btnLogout'), '로그아웃', () => { tgOverlay.hidden = true; firebase.auth().signOut(); }));
+
+  function connect() {
+    if (!window.firebase) { setSync('error', '연결 실패'); showGate('앱 부품을 불러오지 못했어. 인터넷 연결을 확인하고 새로고침해줘.'); return; }
+    firebase.initializeApp(FIREBASE_CONFIG);
+    fs = firebase.firestore();
+    try { fs.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) {}
+    firebase.auth().useDeviceLanguage();
+    firebase.auth().getRedirectResult().catch(() => {});
+    firebase.auth().onAuthStateChanged((user) => {
+      if (!user) {
+        unsubs.forEach(u => u()); unsubs = []; uid = null;
+        S = { tags: DEFAULT_TAGS.slice(), events: {}, notes: {} }; renderAll();
+        showGate(''); setSync('offline', '로그인 필요');
+        return;
+      }
+      uid = user.uid; userKey = KEY + '.' + uid;
+      const chip = $('userChip');
+      chip.innerHTML = (user.photoURL ? `<img src="${esc(user.photoURL)}" alt="" referrerpolicy="no-referrer">` : '') + `<span>${esc(user.email || user.displayName || '')}</span>`;
+      loadUserLocal(); renderAll();
+      gate.hidden = true; hideBanner(); setSync('loading');
+      subscribe();
+    });
+    window.addEventListener('online', () => setSync('online'));
+    window.addEventListener('offline', () => setSync('offline'));
+  }
+
+
+  // ---------- data ops ----------
+  function putEvent(ev) { S.events[ev.id] = ev; saveLocal(); renderAll(); remoteWrite('events/' + ev.id, ev); }
+  function delEvent(id) { delete S.events[id]; saveLocal(); renderAll(); remoteWrite('events/' + id, null); }
+  function putNote(n) { S.notes[n.id] = n; saveLocal(); renderNotes(); remoteWrite('notes/' + n.id, n); }
+  function delNote(id) { delete S.notes[id]; saveLocal(); renderNotes(); remoteWrite('notes/' + id, null); }
+  function putTags(list) { S.tags = list; saveLocal(); renderAll(); remoteWrite('settings/tags', { list }); }
+  const tagOf = (id) => S.tags.find(t => t.id === id) || null;
+  const tagColor = (id) => { const t = tagOf(id); return t ? t.color : '#7A8090'; };
+
+  // ---------- recurrence ----------
+  function occursOn(e, d) {
+    if (!e.date) return false;
+    if (!e.repeat) return e.date === d;
+    if (d < e.date) return false;
+    if (e.until && d > e.until) return false;
+    if (Array.isArray(e.skips) && e.skips.includes(d)) return false;
+    const a = parse(e.date), b = parse(d);
+    switch (e.repeat) {
+      case 'daily': return true;
+      case 'weekly': return dayDiff(e.date, d) % 7 === 0;
+      case 'monthly': return a.getDate() === b.getDate();
+      case 'yearly': return a.getDate() === b.getDate() && a.getMonth() === b.getMonth();
+      default: return false;
+    }
+  }
+  function isDone(e, d) { return e.repeat ? (Array.isArray(e.doneDates) && e.doneDates.includes(d)) : !!e.done; }
+  function eventsOn(d) {
+    const list = Object.values(S.events).filter(e => occursOn(e, d));
+    list.sort((x, y) => (x.start || '') < (y.start || '') ? -1 : (x.start || '') > (y.start || '') ? 1 : (x.title || '').localeCompare(y.title || '', 'ko'));
+    return list;
+  }
+  const REPEAT_KO = { daily: '매일', weekly: '매주', monthly: '매월', yearly: '매년' };
+
+  // ---------- render: calendar ----------
+  const calEl = $('cal');
+  function renderCal() {
+    $('monthTitle').textContent = `${view.y}년 ${view.m + 1}월`;
+    const first = new Date(view.y, view.m, 1);
+    const startDow = first.getDay();
+    const dim = new Date(view.y, view.m + 1, 0).getDate();
+    const rows = Math.ceil((startDow + dim) / 7);
+    const today = todayYmd();
+    let html = WEEKDAYS.map((w, i) => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('');
+    const start = new Date(view.y, view.m, 1 - startDow);
+    for (let i = 0; i < rows * 7; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const key = ymd(d), dow = d.getDay(), inMonth = d.getMonth() === view.m;
+      const hol = HOLIDAYS[key];
+      const evs = eventsOn(key);
+      const cls = ['cell', inMonth ? '' : 'out', key === today ? 'today' : '', key === view.sel ? 'sel' : '',
+        dow === 0 ? 'sun' : dow === 6 ? 'sat' : '', hol ? 'hol' : ''].filter(Boolean).join(' ');
+      const MAX = 3;
+      const chips = evs.slice(0, MAX).map(e => `<div class="chip ${isDone(e, key) ? 'done' : ''}" style="--c:${tagColor(e.tag)}">${e.start ? `<b>${esc(e.start)}</b>` : ''}${esc(e.title)}</div>`).join('');
+      const more = evs.length > MAX ? `<div class="more">+${evs.length - MAX}</div>` : '';
+      const dots = evs.slice(0, 4).map(e => `<i style="--c:${tagColor(e.tag)}"></i>`).join('');
+      html += `<button type="button" class="${cls}" data-d="${key}" role="gridcell" aria-label="${key}${hol ? ' ' + hol : ''}">
+        <div class="d-row"><span class="d">${d.getDate()}</span>${hol ? `<span class="hol-name">${esc(hol)}</span>` : ''}</div>
+        <div class="chips">${chips}${more}</div><div class="dots">${dots}</div></button>`;
+    }
+    calEl.innerHTML = html;
+  }
+  calEl.addEventListener('click', (ev) => {
+    const cell = ev.target.closest('.cell'); if (!cell) return;
+    const key = cell.dataset.d;
+    if (view.sel === key) { openEvent(null, key); return; }   // second tap = new event on that day
+    view.sel = key;
+    const d = parse(key);
+    if (d.getMonth() !== view.m || d.getFullYear() !== view.y) { view.y = d.getFullYear(); view.m = d.getMonth(); }
+    renderCal(); renderAgenda();
+  });
+  calEl.addEventListener('dblclick', (ev) => { const cell = ev.target.closest('.cell'); if (cell) openEvent(null, cell.dataset.d); });
+
+  // ---------- render: agenda ----------
+  function renderAgenda() {
+    const key = view.sel, d = parse(key), today = todayYmd(), hol = HOLIDAYS[key];
+    const evs = eventsOn(key);
+    let html = `<div class="sec-head"><h2 class="sec-title num">${koDate(key)}<span class="wk">${WEEKDAYS[d.getDay()]}요일</span></h2>`;
+    if (key === today) html += `<span class="badge">오늘</span>`;
+    if (hol) html += `<span class="badge hol">${esc(hol)}</span>`;
+    html += `<span class="grow"></span><button type="button" class="link-btn" data-act="new">+ 일정</button></div>`;
+    if (!evs.length) html += `<div class="empty">${key === today ? '오늘은 일정이 없어.' : '일정 없음'} 날짜를 한 번 더 누르면 바로 추가돼.</div>`;
+    else {
+      html += `<div class="ev-list">` + evs.map(e => {
+        const done = isDone(e, key);
+        const t = e.start ? `${esc(e.start)}${e.end ? `<br><span style="color:var(--ink-3)">~${esc(e.end)}</span>` : ''}` : '<span class="allday">종일</span>';
+        return `<div class="ev ${done ? 'done' : ''}" data-id="${e.id}">
+          <button type="button" class="chk" data-act="toggle" aria-label="완료 표시">${done ? '✓' : ''}</button>
+          <div class="t num">${t}</div>
+          <div class="title"><span class="tag-dot" style="--c:${tagColor(e.tag)}"></span><span>${esc(e.title)}</span>${e.repeat ? `<span class="rep">↻ ${REPEAT_KO[e.repeat]}</span>` : ''}</div>
+        </div>`;
+      }).join('') + `</div>`;
+    }
+    $('agenda').innerHTML = html;
+  }
+  $('agenda').addEventListener('click', (ev) => {
+    const act = ev.target.closest('[data-act]');
+    if (act && act.dataset.act === 'new') { openEvent(null, view.sel); return; }
+    const row = ev.target.closest('.ev'); if (!row) return;
+    const e = S.events[row.dataset.id]; if (!e) return;
+    if (act && act.dataset.act === 'toggle') { toggleDone(e, view.sel); return; }
+    openEvent(e, view.sel);
+  });
+  function toggleDone(e, d) {
+    const c = clone(e);
+    if (c.repeat) {
+      const arr = Array.isArray(c.doneDates) ? c.doneDates : [];
+      c.doneDates = arr.includes(d) ? arr.filter(x => x !== d) : arr.concat(d);
+    } else c.done = !c.done;
+    c.updatedAt = Date.now();
+    putEvent(c);
+  }
+
+  // ---------- render: notes ----------
+  function renderTagFilter() {
+    const all = `<button type="button" class="tf ${view.noteTag === null ? 'on' : ''}" data-tag="">전체</button>`;
+    $('tagFilter').innerHTML = all + S.tags.map(t => `<button type="button" class="tf ${view.noteTag === t.id ? 'on' : ''}" data-tag="${t.id}" style="--c:${t.color}"><i></i>${esc(t.name)}</button>`).join('');
+  }
+  $('tagFilter').addEventListener('click', (ev) => {
+    const b = ev.target.closest('.tf'); if (!b) return;
+    view.noteTag = b.dataset.tag || null; renderNotes();
+  });
+  $('noteSearch').addEventListener('input', (ev) => { view.noteQuery = ev.target.value.trim().toLowerCase(); renderNoteList(); });
+  function renderNotes() { renderTagFilter(); renderNoteList(); }
+  function renderNoteList() {
+    let list = Object.values(S.notes);
+    const q = view.noteQuery;
+    if (view.noteTag) list = list.filter(n => Array.isArray(n.tags) && n.tags.includes(view.noteTag));
+    if (q) list = list.filter(n => (n.title || '').toLowerCase().includes(q) || (n.body || '').toLowerCase().includes(q));
+    list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
+    $('noteCount').textContent = list.length ? `${list.length}개` : '';
+    if (!list.length) { $('noteList').innerHTML = `<div class="empty">${q || view.noteTag ? '조건에 맞는 메모가 없어.' : '아직 메모가 없어. "+ 새 메모"로 시작해.'}</div>`; return; }
+    $('noteList').innerHTML = list.map(n => {
+      const tags = (n.tags || []).map(id => { const t = tagOf(id); return t ? `<span class="tg" style="--c:${t.color}">${esc(t.name)}</span>` : ''; }).join('');
+      const when = n.updatedAt ? fmtWhen(n.updatedAt) : '';
+      return `<button type="button" class="note" data-id="${n.id}">
+        <div class="n-title">${n.pinned ? '<span class="pin">📌</span>' : ''}<span>${esc(n.title) || '<span style="color:var(--ink-3)">제목 없음</span>'}</span></div>
+        ${n.body ? `<div class="n-body">${esc(n.body)}</div>` : ''}
+        <div class="n-meta">${tags}<span class="grow"></span><span class="num">${when}</span></div>
+      </button>`;
+    }).join('');
+  }
+  $('noteList').addEventListener('click', (ev) => { const b = ev.target.closest('.note'); if (b) openNote(S.notes[b.dataset.id]); });
+  function fmtWhen(ts) {
+    const d = new Date(ts), t = new Date();
+    if (ymd(d) === ymd(t)) return `오늘 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (d.getFullYear() === t.getFullYear()) return `${d.getMonth() + 1}.${d.getDate()}`;
+    return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
+  }
+
+  function renderAll() { renderCal(); renderAgenda(); renderNotes(); }
+
+  // ---------- event editor ----------
+  const evOverlay = $('evOverlay'), evForm = $('evForm');
+  let editingEvent = null, editingDate = null, evTag = null;
+  function renderTagPick(container, selected, multi) {
+    container.innerHTML = S.tags.map(t => `<button type="button" class="tp ${(multi ? selected.includes(t.id) : selected === t.id) ? 'on' : ''}" data-tag="${t.id}" style="--c:${t.color}"><i></i>${esc(t.name)}</button>`).join('')
+      || '<span class="hint">태그가 없어. 상단 "태그 관리"에서 추가해.</span>';
+  }
+  function openEvent(e, dateKey) {
+    editingEvent = e ? clone(e) : null; editingDate = dateKey;
+    $('evHeading').textContent = e ? '일정 수정' : '새 일정';
+    $('evTitle').value = e ? e.title || '' : '';
+    $('evDate').value = e ? e.date : dateKey;
+    $('evStart').value = e ? e.start || '' : '';
+    $('evEnd').value = e ? e.end || '' : '';
+    $('evRepeat').value = e ? e.repeat || '' : '';
+    $('evUntil').value = e ? e.until || '' : '';
+    $('evMemo').value = e ? e.memo || '' : '';
+    evTag = e ? e.tag || null : (S.tags[0] ? S.tags[0].id : null);
+    renderTagPick($('evTags'), evTag, false);
+    $('evUntilWrap').style.visibility = $('evRepeat').value ? 'visible' : 'hidden';
+    $('evDel').hidden = !e; $('evDel').textContent = e && e.repeat ? '전체 삭제' : '삭제'; $('evDel').classList.remove('confirm');
+    $('evDelOne').hidden = !(e && e.repeat); $('evDelOne').classList.remove('confirm'); $('evDelOne').textContent = '이 날만 삭제';
+    evOverlay.hidden = false;
+    setTimeout(() => $('evTitle').focus(), 50);
+  }
+  $('evTags').addEventListener('click', (ev) => { const b = ev.target.closest('.tp'); if (!b) return; evTag = evTag === b.dataset.tag ? null : b.dataset.tag; renderTagPick($('evTags'), evTag, false); });
+  $('evRepeat').addEventListener('change', () => { $('evUntilWrap').style.visibility = $('evRepeat').value ? 'visible' : 'hidden'; });
+  evForm.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const title = $('evTitle').value.trim(); if (!title) { $('evTitle').focus(); return; }
+    const base = editingEvent || { id: newId(), createdAt: Date.now() };
+    const e = Object.assign({}, base, {
+      title, date: $('evDate').value, start: $('evStart').value || '', end: $('evEnd').value || '',
+      tag: evTag || '', repeat: $('evRepeat').value || '', until: $('evRepeat').value ? ($('evUntil').value || '') : '',
+      memo: $('evMemo').value.trim(), updatedAt: Date.now(),
+    });
+    if (!e.repeat) { delete e.doneDates; delete e.skips; }
+    putEvent(e);
+    view.sel = e.date; const d = parse(e.date); view.y = d.getFullYear(); view.m = d.getMonth();
+    closeEvent(); renderCal(); renderAgenda();
+  });
+  function closeEvent() { evOverlay.hidden = true; editingEvent = null; }
+  $('evCancel').addEventListener('click', closeEvent);
+  evOverlay.addEventListener('click', (ev) => { if (ev.target === evOverlay) closeEvent(); });
+  function twoStep(btn, label, fn) {
+    if (!btn.classList.contains('confirm')) { btn.classList.add('confirm'); btn.textContent = `정말 ${label}`; setTimeout(() => { btn.classList.remove('confirm'); btn.textContent = label; }, 3000); return; }
+    fn();
+  }
+  $('evDel').addEventListener('click', () => twoStep($('evDel'), $('evDel').textContent.replace('정말 ', ''), () => { if (editingEvent) delEvent(editingEvent.id); closeEvent(); }));
+  $('evDelOne').addEventListener('click', () => twoStep($('evDelOne'), '이 날만 삭제', () => {
+    if (!editingEvent) return;
+    const c = clone(editingEvent); c.skips = (c.skips || []).concat(editingDate); c.updatedAt = Date.now(); putEvent(c); closeEvent();
+  }));
+
+  // ---------- note editor ----------
+  const ntOverlay = $('ntOverlay');
+  let editingNote = null, ntTimer = null, ntDirty = false;
+  function openNote(n) {
+    editingNote = n ? clone(n) : { id: newId(), title: '', body: '', tags: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() };
+    $('ntTitle').value = editingNote.title || '';
+    $('ntBody').value = editingNote.body || '';
+    $('ntPin').checked = !!editingNote.pinned;
+    renderTagPick($('ntTags'), editingNote.tags || [], true);
+    $('ntState').textContent = n ? '저장됨' : '';
+    $('ntDel').classList.remove('confirm'); $('ntDel').textContent = '삭제'; $('ntDel').hidden = !n;
+    ntDirty = false;
+    ntOverlay.hidden = false;
+    setTimeout(() => (n ? $('ntBody') : $('ntTitle')).focus(), 50);
+  }
+  function noteChanged() {
+    if (!editingNote) return;
+    ntDirty = true; $('ntState').textContent = '저장 중…';
+    clearTimeout(ntTimer); ntTimer = setTimeout(flushNote, 600);
+  }
+  function flushNote() {
+    if (!editingNote || !ntDirty) return;
+    editingNote.title = $('ntTitle').value.trim();
+    editingNote.body = $('ntBody').value;
+    editingNote.pinned = $('ntPin').checked;
+    if (!editingNote.title && !editingNote.body.trim()) return;   // nothing to keep yet
+    editingNote.updatedAt = Date.now();
+    putNote(clone(editingNote)); ntDirty = false;
+    $('ntState').textContent = '저장됨'; $('ntDel').hidden = false;
+  }
+  $('ntTitle').addEventListener('input', noteChanged);
+  $('ntBody').addEventListener('input', noteChanged);
+  $('ntPin').addEventListener('change', noteChanged);
+  $('ntTags').addEventListener('click', (ev) => {
+    const b = ev.target.closest('.tp'); if (!b || !editingNote) return;
+    const id = b.dataset.tag, arr = editingNote.tags || [];
+    editingNote.tags = arr.includes(id) ? arr.filter(x => x !== id) : arr.concat(id);
+    renderTagPick($('ntTags'), editingNote.tags, true); noteChanged();
+  });
+  function closeNote() { clearTimeout(ntTimer); flushNote(); ntOverlay.hidden = true; editingNote = null; }
+  $('ntClose').addEventListener('click', closeNote);
+  ntOverlay.addEventListener('click', (ev) => { if (ev.target === ntOverlay) closeNote(); });
+  $('ntDel').addEventListener('click', () => twoStep($('ntDel'), '삭제', () => { if (editingNote) { ntDirty = false; delNote(editingNote.id); } ntOverlay.hidden = true; editingNote = null; }));
+
+  // ---------- tag manager ----------
+  const tgOverlay = $('tgOverlay');
+  let tgDraft = [];
+  function renderTagRows() {
+    $('tagRows').innerHTML = tgDraft.map((t, i) => `<div class="tag-row" data-i="${i}">
+      <input type="color" value="${t.color}" aria-label="색">
+      <input type="text" value="${esc(t.name)}" placeholder="태그 이름" maxlength="20">
+      <button type="button" class="x" aria-label="태그 삭제">×</button></div>`).join('');
+  }
+  $('btnTags').addEventListener('click', () => { tgDraft = clone(S.tags); renderTagRows(); tgOverlay.hidden = false; });
+  $('tagRows').addEventListener('input', (ev) => {
+    const row = ev.target.closest('.tag-row'); if (!row) return;
+    const t = tgDraft[+row.dataset.i];
+    if (ev.target.type === 'color') t.color = ev.target.value; else t.name = ev.target.value;
+  });
+  $('tagRows').addEventListener('click', (ev) => {
+    const x = ev.target.closest('.x'); if (!x) return;
+    tgDraft.splice(+x.closest('.tag-row').dataset.i, 1); renderTagRows();
+  });
+  $('tgAdd').addEventListener('click', () => {
+    const palette = ['#2456A6', '#2E8B57', '#D97B14', '#C2447A', '#C23B3B', '#6B4FBB', '#0E8A8A', '#8A6D1F'];
+    tgDraft.push({ id: 't' + newId(), name: '', color: palette[tgDraft.length % palette.length] }); renderTagRows();
+    const inputs = $('tagRows').querySelectorAll('input[type="text"]'); if (inputs.length) inputs[inputs.length - 1].focus();
+  });
+  $('tgSave').addEventListener('click', () => { putTags(tgDraft.filter(t => t.name.trim()).map(t => ({ id: t.id, name: t.name.trim(), color: t.color }))); tgOverlay.hidden = true; });
+  $('tgCancel').addEventListener('click', () => { tgOverlay.hidden = true; });
+  tgOverlay.addEventListener('click', (ev) => { if (ev.target === tgOverlay) tgOverlay.hidden = true; });
+
+  // ---------- nav & misc ----------
+  function gotoMonth(delta) { const d = new Date(view.y, view.m + delta, 1); view.y = d.getFullYear(); view.m = d.getMonth(); renderCal(); }
+  $('prevM').addEventListener('click', () => gotoMonth(-1));
+  $('nextM').addEventListener('click', () => gotoMonth(1));
+  $('btnToday').addEventListener('click', () => { const t = new Date(); view.y = t.getFullYear(); view.m = t.getMonth(); view.sel = todayYmd(); renderCal(); renderAgenda(); });
+  $('btnNewEvent').addEventListener('click', () => openEvent(null, view.sel));
+  $('btnNewNote').addEventListener('click', () => openNote(null));
+  function setTab(t) { document.body.dataset.tab = t; $('tabCal').classList.toggle('on', t === 'cal'); $('tabMemo').classList.toggle('on', t === 'memo'); try { localStorage.setItem(KEY + '.tab', t); } catch (e) {} }
+  $('tabCal').addEventListener('click', () => setTab('cal'));
+  $('tabMemo').addEventListener('click', () => setTab('memo'));
+  $('fab').addEventListener('click', () => { if (document.body.dataset.tab === 'memo') openNote(null); else openEvent(null, view.sel); });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') { if (!evOverlay.hidden) closeEvent(); else if (!ntOverlay.hidden) closeNote(); else if (!tgOverlay.hidden) tgOverlay.hidden = true; }
+  });
+  // Re-render at midnight so "오늘" moves on its own.
+  let lastToday = todayYmd();
+  setInterval(() => { const t = todayYmd(); if (t !== lastToday) { lastToday = t; renderCal(); renderAgenda(); } }, 60000);
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+
+  // ---------- boot ----------
+  let savedTab = 'cal'; try { savedTab = localStorage.getItem(KEY + '.tab') || 'cal'; } catch (e) {}
+  setTab(savedTab);
+  renderAll();
+  connect();
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+  }
+})();
+</script>
+</body>
+</html>
