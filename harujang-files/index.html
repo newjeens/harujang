@@ -164,6 +164,7 @@
   .chip b { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 3px; }
   .chip.done { text-decoration: line-through; opacity: .55; }
   .more { font-size: 11.5px; color: var(--ink-3); padding-left: 4px; }
+  .more-badge { display: none; margin-left: auto; font-size: 9.5px; font-weight: 600; color: var(--ink-2); background: var(--line-2); border-radius: 999px; padding: 0 5px; line-height: 15px; flex: none; }
   .dots { display: none; gap: 3px; flex-wrap: wrap; }
   .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); display: block; }
 
@@ -304,11 +305,15 @@
     .month-title { font-size: 21px; }
     .cal { min-height: 0; }
     .cal .wd { padding: 6px 0; font-size: 11.5px; }
-    .cell { min-height: 62px; padding: 4px 3px 4px; gap: 2px; }
+    .cell { min-height: 86px; padding: 3px 2px 3px; gap: 2px; }
     .cell .d { font-size: 14px; width: 24px; height: 22px; }
     .cell .hol-name { font-size: 10px; }
-    .chips, .more { display: none; }
-    .dots { display: flex; padding-left: 4px; }
+    .chips { gap: 1px; }
+    .chip { font-size: 10px; line-height: 1.35; padding: 1px 3px; border-left-width: 2px; border-radius: 3px; }
+    .chip b { display: none; }               /* 시간은 숨기고 제목만 (칸이 좁아서) */
+    .more { display: none; }                 /* 넘침 표시는 날짜 옆 배지로 */
+    .more-badge { display: inline-block; }
+    .dots { display: none; }
     body[data-tab="memo"] .cal-pane, body[data-tab="memo"] .agenda { display: none; }
     body[data-tab="cal"] .notes { display: none; }
     .notes { padding-bottom: 96px; }
@@ -684,9 +689,10 @@
       const MAX = 3;
       const chips = evs.slice(0, MAX).map(e => `<div class="chip ${isDone(e, key) ? 'done' : ''}" style="--c:${tagColor(e.tag)}">${e.start ? `<b>${esc(e.start)}</b>` : ''}${esc(e.title)}</div>`).join('');
       const more = evs.length > MAX ? `<div class="more">+${evs.length - MAX}</div>` : '';
+      const moreBadge = evs.length > MAX ? `<span class="more-badge">+${evs.length - MAX}</span>` : '';
       const dots = evs.slice(0, 4).map(e => `<i style="--c:${tagColor(e.tag)}"></i>`).join('');
       html += `<button type="button" class="${cls}" data-d="${key}" role="gridcell" aria-label="${key}${hol ? ' ' + hol : ''}">
-        <div class="d-row"><span class="d">${d.getDate()}</span>${hol ? `<span class="hol-name">${esc(hol)}</span>` : ''}</div>
+        <div class="d-row"><span class="d">${d.getDate()}</span>${hol ? `<span class="hol-name">${esc(hol)}</span>` : ''}${moreBadge}</div>
         <div class="chips">${chips}${more}</div><div class="dots">${dots}</div></button>`;
     }
     calEl.innerHTML = html;
